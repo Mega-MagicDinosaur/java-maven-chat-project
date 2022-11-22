@@ -7,6 +7,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class Server {
     private ServerSocket server;
@@ -16,8 +18,38 @@ public class Server {
 
     private boolean open = false;
 
-    public void read() {
+    public void read() throws ServerClosedException {
+        if (open) {
+            try {
+                while (open) {
+                    System.out.println("clients: " + 
+                            clients.stream()
+                            .map(ServerConnection::getName)
+                            .filter(Objects::nonNull).collect(Collectors.joining(", ")) );
+                    // System.out.println("commands: \n@kick [name], \n@mute [name], \n@close");
+                    System.out.println("to show commands type '@?'");
+                    String[] message = keyboard.readLine().split(" ", 2);
+                    switch (message[0]) {
+                        case "@mute" -> clients.stream()
+                                .filter(client -> client.getName() == message[1])
+                                .findAny()
+                                .ifPresentOrElse(
+                                    client -> client.setMuted(true), 
+                                    () -> System.out.println("client not found") );
+                        case "@unmute" -> {}
+                        case "@kick" -> clients.stream()
+                                .filter(client -> client.getName() != null)
+                                .filter(client -> client.getName().equals(message[1])).findAny()
+                                .ifPresentOrElse(
+                                        client -> client.close("you have been kicked out"),
+                                        () -> System.out.println("client not found") );
+                        case "@exit" -> this.close();
+                        default -> System.out.println("unknown command");
+                    }
 
+                }
+            } catch (IOException e) { e.printStackTrace(); }
+        } else { throw new ServerClosedException("server is not open"); }
     }
 
     public void open() {

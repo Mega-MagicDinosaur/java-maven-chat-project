@@ -56,14 +56,43 @@ public class ServerConnection {
 
             if (name==null && message!=null) { this.submitName(message); }
             else {
-                switch ((message!=null)? message.getType() : MessageType.NULL_MESSAGE) {}
             }
         }
     }
+    public void mess(Message _message) { // ABSOLUTELY CHANGE NAME THIS IS HORRIBLE
+        switch ((_message!=null)? _message.getType() : MessageType.NULL_MESSAGE) {
+            case CLIENT_CLOSE:
+                this.close(null);
+                break;
+            case CLIENT_SEND_PRIVATE:
+                if (this.allowed()) {
+                    clients.stream()
+                        .filter(client -> client.name != null)
+                        .filter(client -> client.name.equals(_message.getReceiver()) )
+                        .findAny()
+                        .ifPresentOrElse(
+                            client -> client.write( new Message(MessageType.SERVER_SEND_PRIVATE, _message.getPayload(), _message.getSender() ) ), 
+                            () -> this.write( new Message(MessageType.SERVER_SEND_ERROR, ErrorType.RECEIVER_NOT_FOUND.name() ) ) );
+                } else { this.write( new Message(MessageType.SERVER_SEND_ERROR, ErrorType.CLIENT_MUTED.name()) ); }
+                break;
+            case CLIENT_SEND_PUBLIC:
+                if (this.allowed()) {
+                    clients.forEach( client -> client.write( new Message(
+                        MessageType.SERVER_SEND_PUBLIC,
+                        _message.getPayload(),
+                        _message.getSender() ) ) );
+                } else { this.write( new Message(MessageType.SERVER_SEND_ERROR, ErrorType.CLIENT_MUTED.name()) ); }
+                break;
+            case CLIENT_SET_NAME:
+                this.submitName(_message);
+                break; 
+        }
+    }
+
     public void close(String _warn) {
         try {
             open = false;
-            if (_warn != null) { write(new Message(MessageType.SERVER_CLOSE, _warn)); }
+            if (_warn != null) { this.write(new Message(MessageType.SERVER_CLOSE, _warn)); }
             clients.remove(this);
             this.updateClients();
             socket.close();
@@ -76,11 +105,13 @@ public class ServerConnection {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()); // for arraylist: Collectors.toCollection(ArrayList::new)
 
-        clients.forEach(client -> client.write(
-                new Message(MessageType.SERVER_SEND_CLIENTS, String.join(",", names)) ) );
+        clients.stream()
+            .filter(client -> client.name != null)
+            .forEach(client -> client.write(new Message(MessageType.SERVER_SEND_CLIENTS, String.join(",", names)) ) );
     }
 
     public String getName() { return name; }
+
     public void submitName(@NotNull Message _message) {
         if (_message.getType() == MessageType.CLIENT_SET_NAME) {
             final boolean exists = clients.stream()
@@ -98,4 +129,9 @@ public class ServerConnection {
     }
 
     public boolean allowed() { return name!=null && !muted; }
+
+    public boolean isMuted() { return muted; }
+
+    public void setMuted(boolean muted) { this.muted = muted; }
+
 }
